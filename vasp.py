@@ -250,6 +250,7 @@ def main(cfg):
       # write slurm scripts
       write_slurm_scripts(cfg, loop_result, destinations)
 
+
       plural='' if len(loop_result) < 2 else 's'
       logging.info(f'{len(loop_result)} folder{plural} total')
      
@@ -261,7 +262,13 @@ def main(cfg):
             
       
 
- # da fare ora:
+# da fare ora:
+
+# scrivere executor per slurm
+# scrivere executor per cseasrv
+# sistemare config file
+# implementare help message
+ 
 # DONE creare il naming system e la cartella
 # DONE caricare files su pymatgen
 # DONE scrivere files
