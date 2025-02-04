@@ -1,0 +1,55 @@
+
+scratchdir: /capstor/scratch/cscs/pgiorgio/VASP
+
+
+rootdir: '/capstor/scratch/cscs/pgiorgio/VASP/'
+subdir: null
+
+prefix: null
+suffix: null
+
+overwrite: False
+
+      
+loop:
+#      - file: incar
+#        parameter: ediff
+#        interpolation: list      # list, interval
+#        val: [ 1.0, 2.0, 3.0]
+      - file: poscar
+        parameter: a
+        interpolation: interval
+        val: [5.0,7.0,.2]
+
+functional: PBE
+pseudo:
+      variant: null # 'sv_GW'  # '' for standard, 'sv_GW' for 'Ti_sv_GW'; null for from input
+source:
+      dir: null
+      poscar: null
+      kpoints: null
+      incar: null
+      potcar: null
+
+slurm:
+      cmd: srun --cpu-bind=socket ~/mps-wrapper.sh vasp_std 
+      setup:
+            job-name: null
+            account: lp07
+            constraint: gpu
+            hint: [nomultithread, exclusive]
+            nodes: 1
+            ntasks-per-node: 32
+            ntasks-per-core: 1
+            cpus-per-task: 1
+            partition: normal
+            time: '12:00:00'
+            output: log
+            error: err
+            uenv: 'vasp/v6.4.3:v1'
+
+      env: |
+          export PATH=/user-environment/env/vasp/bin/:$PATH
+          export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+          export MPICH_MALLOC_FALLBACK=1
+          export MPICH_GPU_SUPPORT_ENABLED=1
