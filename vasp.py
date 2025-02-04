@@ -16,7 +16,7 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",  # Log format
     datefmt="%Y-%m-%d %H:%M:%S",  # Date format
     handlers=[
-        logging.FileHandler("app.log"),  # Log to a file
+        logging.FileHandler("vasp-input.log"),  # Log to a file
         logging.StreamHandler()  # Log to console
     ]
 )
