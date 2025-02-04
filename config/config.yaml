@@ -1,3 +1,7 @@
+hydra:
+  job_logging: { disabled }       # Disable job logging
+  hydra_logging: { disabled }      # Disable Hydra's internal logging
+
 
 scratchdir: /capstor/scratch/cscs/pgiorgio/VASP
 
