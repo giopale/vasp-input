@@ -35,25 +35,41 @@ source:
       incar: null
       potcar: null
 
-slurm:
-      cmd: srun --cpu-bind=socket ~/mps-wrapper.sh vasp_std 
-      setup:
-            job-name: null
-            account: lp07
-            constraint: gpu
-            hint: [nomultithread, exclusive]
-            nodes: 1
-            ntasks-per-node: 32
-            ntasks-per-core: 1
-            cpus-per-task: 1
-            partition: normal
-            time: '12:00:00'
-            output: log
-            error: err
-            uenv: 'vasp/v6.4.3:v1'
+executor: null
 
-      env: |
-          export PATH=/user-environment/env/vasp/bin/:$PATH
-          export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
-          export MPICH_MALLOC_FALLBACK=1
-          export MPICH_GPU_SUPPORT_ENABLED=1
+executors:
+      daint-gh200:
+            slurm:
+                  cmd: srun --cpu-bind=socket ~/mps-wrapper.sh vasp_std 
+                  setup:
+                        job-name: null
+                        account: lp07
+                        constraint: gpu
+                        hint: [nomultithread, exclusive]
+                        nodes: 1
+                        ntasks-per-node: 32
+                        ntasks-per-core: 1
+                        cpus-per-task: 1
+                        partition: normal
+                        time: '12:00:00'
+                        output: log
+                        error: err
+                        uenv: 'vasp/v6.4.3:v1'
+            
+                  env: |
+                      export PATH=/user-environment/env/vasp/bin/:$PATH
+                      export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+                      export MPICH_MALLOC_FALLBACK=1
+                      export MPICH_GPU_SUPPORT_ENABLED=1
+
+      cseasrv:
+            local:
+                  cmd: vasp_std
+                  nproc: 128
+                  mpiexec: mpirun
+                  env: |
+                      export SPACK_ROOT=/software/spack
+                      export SPACK_COLOR=always
+                      source \${SPACK_ROOT}/share/spack/setup-env.sh
+                      spack load vasp
+      
