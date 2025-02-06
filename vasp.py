@@ -1,11 +1,13 @@
 import hydra
 from pathlib import Path
 from pymatgen.io.vasp import Poscar, Kpoints, Incar, Potcar, VaspInput
+from omegaconf import OmegaConf
 import numpy as np
 import sys
 from itertools import product
 import json
 import copy
+import os, stat
 
 
 import logging
@@ -108,27 +110,19 @@ def prepare_potcar(cfg, symbols, potcar=None):
 
 
 
-def compile_sbatch_script(setup, env, command, calcdir):
-      sbatch_lines=['#!/bin/bash -l\n']
 
-      for key, val in setup.items():
-            if val is None:
-                  logging.warning(f'slurm setup {key} = {val}!')
 
-            # deal with duplicate values (--hint can repeat)
-            if not isinstance(val, str) and hasattr(val, "__len__") and (len(val) > 1):
-                  line=''
-                  for ii in val:
-                        line+=f'#SBATCH --{key}={ii}\n'
-            else:
-                  line=f'#SBATCH --{key}={val}\n'
-            sbatch_lines.append(line)
+def compile_run_script(env, mpiexec, nproc, command, calcdir):
+      lines=['#!/bin/bash -l\n']
+
       
-      sbatch_lines.append('\n'+env+'\n')
+      lines.append('\n'+env+'\n')
+      cmd = f'{mpiexec} -np {nproc} {command}'
       
-      sbatch_lines.append(f'pushd {calcdir} || exit 1\n    ' + command + '\npopd\n')
+      lines.append(f'pushd {calcdir} || exit 1\n    ' + cmd + '\npopd\n')
       
-      return sbatch_lines
+      return lines
+
 
 def compile_input_loop(cfg, incar, poscar, potcar, kpoints, file_poscar):
       parameters_of_loops=[]
@@ -203,23 +197,57 @@ def write_calc(cfg, loop_result, destinations):
             
             vaspinput.write_input(calcdir)
 
-def write_slurm_scripts(cfg, loop_result, destinations):
-      for name, vaspinput in loop_result.items():
-            calcdir=destinations[name]
-            sbatchconfig=copy.deepcopy(cfg.slurm.setup)
-            if sbatchconfig['job-name'] is None:
-                  sbatchconfig['job-name']=name[-12:]
-            sbatchconfig['error']=str(calcdir.name)+'/err'
-            sbatchconfig['output']=str(calcdir.name)+'/log'
-            if sbatchconfig['partition'] == 'debug':
-                  sbatchconfig['time']='00:30:00'
+def compile_sbatch_script(setup, env, command, calcdir, name):
 
-            sbatch_lines=compile_sbatch_script(sbatchconfig, cfg.slurm.env, cfg.slurm.cmd, calcdir)
-            sbatch_lines.append(f'\necho $SLURM_JOB_ID > run.{name}.success\n')
-            sbatch_file=calcdir.parent/Path(f'run.{name}')
-            with open(sbatch_file, 'w') as f:
-                  f.writelines(sbatch_lines)
+      if setup['job-name'] is None:
+            setup['job-name']=name[-12:]
+      setup['error']=str(calcdir.name)+'/err'
+      setup['output']=str(calcdir.name)+'/log'
+      if setup['partition'] == 'debug':
+            setup['time']='00:30:00'
+        
+      sbatch_lines=['#!/bin/bash -l\n']
 
+      for key, val in setup.items():
+            if val is None:
+                  logging.warning(f'slurm setup {key} = {val}!')
+
+            # deal with duplicate values (--hint can repeat)
+            if not isinstance(val, str) and hasattr(val, "__len__") and (len(val) > 1):
+                  line=''
+                  for ii in val:
+                        line+=f'#SBATCH --{key}={ii}\n'
+            else:
+                  line=f'#SBATCH --{key}={val}\n'
+            sbatch_lines.append(line)
+      
+      sbatch_lines.append('\n'+env+'\n')
+      
+      sbatch_lines.append(f'pushd {calcdir} || exit 1\n    ' + command + '\npopd\n')
+      sbatch_lines.append(f'\necho $SLURM_JOB_ID > run.{name}.success\n')
+      
+      return sbatch_lines
+
+def write_exec_scripts(executor, loop_result, destinations):
+    if executor is not None:
+          for name, vaspinput in loop_result.items():
+                calcdir=destinations[name]
+                lines = None
+                if OmegaConf.select(executor, "slurm") is not None:
+                    lines=compile_sbatch_script(copy.deepcopy(executor.slurm.setup), cfg.slurm.env, cfg.slurm.cmd, calcdir)
+                elif OmegaConf.select(executor, "local") is not None:
+                    setup=executor.local
+                    lines=compile_run_script(env=setup.env, mpiexec=setup.mpiexec, nproc=setup.nproc, command=setup.cmd, \
+                            calcdir=calcdir)
+                    executable=True
+                file=calcdir.parent/Path(f'run.{name}')
+                with open(file, 'w') as f:
+                      f.writelines(lines)
+                if executable:
+                    os.chmod(file, os.stat(file).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    else:
+          logging.warning(f'no executor selected')
 
 
 @hydra.main(config_path="config", config_name="config", version_base=None)
@@ -248,7 +276,8 @@ def main(cfg):
       write_calc(cfg, loop_result, destinations)            
       
       # write slurm scripts
-      write_slurm_scripts(cfg, loop_result, destinations)
+      exe=cfg.executors[cfg.executor]
+      write_exec_scripts(exe, loop_result, destinations)
 
 
       plural='' if len(loop_result) < 2 else 's'
