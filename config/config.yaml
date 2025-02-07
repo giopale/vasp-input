@@ -23,7 +23,7 @@ loop:
       - file: poscar
         parameter: a
         interpolation: interval
-        val: [5.0,7.0,.2]
+        val: [5.3,5.5,.02]
 
 functional: PBE
 pseudo:

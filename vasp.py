@@ -18,7 +18,6 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",  # Log format
     datefmt="%Y-%m-%d %H:%M:%S",  # Date format
     handlers=[
-        logging.FileHandler("vasp-input.log"),  # Log to a file
         logging.StreamHandler()  # Log to console
     ]
 )
@@ -27,11 +26,14 @@ logging.basicConfig(
 
 def ask_if_overwrite(dd):
       folder=Path(dd)
-      user_input = input(f"{folder.name} exists. Do you want to continue? (y/n): ")
-      if user_input.lower() == 'y':
-        proceed=True
+      if folder.exists():
+            user_input = input(f"{str(folder)} exists. Do you want to continue? (y/n): ")
+            if user_input.lower() == 'y':
+              proceed=True
+            else:
+              proceed=False
       else:
-        proceed=False
+            proceed = True
       return proceed
 
 def decide_overwrite(dd,overwrite):
@@ -144,16 +146,17 @@ def compile_input_loop(cfg, incar, poscar, potcar, kpoints, file_poscar):
                   logging.info(f'looping on {ll.parameter.upper()}: {values}')
       
             list_of_calc=list(product(*list_of_loops))
+            print(list_of_calc)
             for cc in list_of_calc:
                   name_tmp=''      
                   for idx, ii in enumerate(parameters_of_loops):
                         dash='' if idx == 0 else '-'
                         if ii['file'].lower() == 'incar':
-                              name_tmp=name_tmp+f'{dash}{ii["parameter"].upper()}_{cc[idx]:.2g}'
+                              name_tmp=name_tmp+f'{dash}{ii["parameter"].upper()}_{cc[idx]:.2f}'
                               incar.update({ii["parameter"].upper():cc[idx]})
                         if ii['file'].lower() == 'poscar':
                               # special handling here for the lattice constant
-                              name_tmp=name_tmp+f'{dash}{ii["parameter"]}_{cc[idx]:.2g}'
+                              name_tmp=name_tmp+f'{dash}{ii["parameter"]}_{cc[idx]:.2f}' 
                               if ii["parameter"].lower() == 'a':
                                     with open(file_poscar,'r') as f:
                                           poscar_lines=f.readlines()
@@ -233,10 +236,11 @@ def write_exec_scripts(executor, loop_result, destinations):
           for name, vaspinput in loop_result.items():
                 calcdir=destinations[name]
                 lines = None
+                executable=False
                 if OmegaConf.select(executor, "slurm") is not None:
-                    lines=compile_sbatch_script(copy.deepcopy(executor.slurm.setup), cfg.slurm.env, cfg.slurm.cmd, calcdir)
+                    settings=executor.slurm
+                    lines=compile_sbatch_script(copy.deepcopy(settings.setup), settings.env, settings.cmd, calcdir, calcdir.name)
                 elif OmegaConf.select(executor, "local") is not None:
-                    setup=executor.local
                     lines=compile_run_script(env=setup.env, mpiexec=setup.mpiexec, nproc=setup.nproc, command=setup.cmd, \
                             calcdir=calcdir)
                     executable=True
@@ -293,10 +297,11 @@ def main(cfg):
 
 # da fare ora:
 
-# scrivere executor per slurm
-# scrivere executor per cseasrv
+# DONE scrivere executor per slurm
+# DONE scrivere executor per cseasrv
 # sistemare config file
 # implementare help message
+# implementare precisione variabile per i parametri di loop
  
 # DONE creare il naming system e la cartella
 # DONE caricare files su pymatgen
