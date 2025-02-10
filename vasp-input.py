@@ -292,15 +292,15 @@ def main(cfg):
 
 # da fare ora:
 
-# sistemare config file
 # implementare help message
-# implementare precisione variabile per i parametri di loop
-# imparare come impostare il loop dalla cli
 # clean exif from 'do you want to continue'
 # test config: subdir, prefix, source.*, executor
 
 
  
+# DONE implementare precisione variabile per i parametri di loop
+# DONE imparare come impostare il loop dalla cli
+# DONE sistemare config file
 # DONE scrivere executor per slurm
 # DONE scrivere executor per cseasrv
 # DONE sistemare root dir
