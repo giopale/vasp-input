@@ -12,15 +12,138 @@ A python-based package to generate VASP input files.
 
 ## Installation
 
-This package requires `hydra` for building the configuration.
+This package requires `hydra` for building the configuration and `pymatgen` to manage the vasp input files.
+
 To install `hydra` use ```pip install hydra-core```.
+
+Installing pymatgen requires two steps:
+1) Install the `pymatgen` package with `pip install pymatgen`
+2) Set up the pseudopotentials: after the installation run ``` pmg config -p <EXTRACTED_VASP_POTCAR> <MY_PSP>```where `<EXTRACTED_VASP_POTCAR>` is the path to the extracted VASP pseudopotential files as obtained from VASP, and `<MY_PSP>` is the desired path where you would like to store the reformatted, `pymatgen`-compatible pseudopotential files. See the [pymatgen website](https://pymatgen.org/installation.html#potcar-setup) for more.
+
 
 ## Usage
 
-Print the basic config file with:
+### Command line interface
+Set up a template folder with the vasp input files:
+```
+template/
+├── INCAR
+├── KPOINTS
+├── POSCAR
+└── POTCAR
+```
+
+then,from the command line, run:
 
 ```bash
-vasp-input --cfg=job
+python3 <path_to_source>/vasp-input.py \
+    source.dir=template \
+    dir.prefix=Si \
+    dir.subdir=PBE \
+    dir.suffix=cell-search \
+    loop='[{file:poscar,parameter:a,interpolation:interval,val:[5.5,5.75,0.1]}]'  \
+    dir.overwrite=True \
+    executor=daint-gh200
+```
+
+### Configuration file
+
+Alternatively, you can create a configuration file `config.yaml`:
+
+```yaml
+
+source:
+  dir: template
+  poscar: null
+  kpoints: null
+  incar: null
+  potcar: null
+dir:
+  prefix: Si
+  suffix: cell-search
+  subdir: PBE
+  overwrite: true
+loop:
+- file: poscar
+  parameter: a
+  interpolation: interval
+  val:
+  - 5.5
+  - 5.75
+  - 0.1
+calc:
+  functional: PBE
+  pseudo:
+    variant: null
+executor: daint-gh200
+
+executors:
+  daint-gh200:
+    slurm:
+      cmd: srun --cpu-bind=socket ~/mps-wrapper.sh vasp_std
+      setup:
+        job-name: null
+        account: lp07
+        constraint: gpu
+        hint:
+        - nomultithread
+        - exclusive
+        nodes: 1
+        ntasks-per-node: 32
+        ntasks-per-core: 1
+        cpus-per-task: 1
+        partition: normal
+        time: '12:00:00'
+        output: log
+        error: err
+        uenv: vasp/v6.4.3:v1
+      env: |
+        export PATH=/user-environment/env/vasp/bin/:$PATH
+        export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+        export MPICH_MALLOC_FALLBACK=1
+        export MPICH_GPU_SUPPORT_ENABLED=1
+
+```
+
+then run:
+
+```bash
+python3 <path_to_source>/vasp-input.py --config-path=$(pwd) --cofig-name=config.yaml
+```
+
+You'll obtain the following tree:
+
+```
+Si
+└── PBE
+    └── cell-search
+        ├── a_5.50
+        │   ├── INCAR
+        │   ├── KPOINTS
+        │   ├── POSCAR
+        │   └── POTCAR
+        ├── a_5.60
+        │   ├── INCAR
+        │   ├── KPOINTS
+        │   ├── POSCAR
+        │   └── POTCAR
+        ├── a_5.70
+        │   ├── INCAR
+        │   ├── KPOINTS
+        │   ├── POSCAR
+        │   └── POTCAR
+        ├── run.a_5.50
+        ├── run.a_5.60
+        └── run.a_5.70
+```
+
+
+## Configuration
+
+The program is configured using a `yaml` file. You can print a template of the basic config file with:
+
+```bash
+python3 vasp-input.py --cfg=job
 ```
 
 The output is going to look like:
@@ -32,23 +155,23 @@ executors:
   cseasrv:
     # ... see later
   
-source:
+source: # path to the template files
   dir: null
   poscar: null
   kpoints: null
   incar: null
   potcar: null
-dir:
+dir: # output directory settings
   prefix: null
   suffix: null
   subdir: null
   overwrite: false
-loop:
-- file: null
-  parameter: null
-  interpolation: null
-  val: null
-calc:
+loop: # loop settings
+    - file: null
+      parameter: null
+      interpolation: null
+      val: null
+calc: # calculation settings
   functional: PBE
   pseudo:
     variant: null
@@ -63,9 +186,8 @@ The settings are divided into sections:
 - `loop` contains the settings for the loops over the lattice parameter in `POSCAR` and/or the parameters in `INCAR`.
 - `calc` contains the settings for the calculation.
 
-### Source
+### Template files
 The program runs on a set of template files. You can provide either the path of a directory containing the template files or the path of a single file.
-The program will look for the template files in the specified directory or in the directory of the specified file.
 Single files have priority over the full directory.
 
 for example, the following configuration:
@@ -81,7 +203,7 @@ source:
 will cause the program to scan `INCAR`, `KPOINTS`, `POSCAR`, and `POTCAR` files in `/home/<user>/VASP/Si-origin` and use the `POSCAR` file in `/home/<user>/VASP/structures/Si/POSCAR`.
 
 
-### Dir
+### Output directories
 The program will create a directory for each calculation.
 The directory name is composed of the `prefix`, the `suffix`, and the `subdir` settings.
 The `prefix` and `suffix` are strings that are added to the directory name.
@@ -99,7 +221,7 @@ dir:
 ```
 
 will produce the following tree:
-```angular2html
+```
 Si
 └── PBE
     └── cell_search
@@ -109,7 +231,7 @@ Si
 Only **prefix is mandatory.**
 If no `subdir` or `suffix` are provided, the calculation directories will be created in the `prefix` directory.
 
-### Calc
+### Calculation
 The program re-generates a POTCAR file for each calculation, using `pymatgen`.
 ```yaml
 calc:
@@ -120,7 +242,7 @@ calc:
 With `variant` can choose between the different variants of the pseudopotentials provided by vasp, e.g. `sv_GW`.
 Set to `null` to use the variant provided in the template POTCAR file parsed at the beginning of the program.
 
-### Loop
+### Loop over parameters
 
 The program can loop over the lattice parameter in the `POSCAR` file and/or the parameters in the `INCAR` file.
 
