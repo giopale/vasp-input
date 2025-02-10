@@ -78,25 +78,28 @@ def load_files(available_files):
 
 def prepare_potcar(cfg, symbols, potcar=None):
       potcar_sym=[]
-      for ss in symbols:
-            potstr=''
-            if len(str(cfg.calc.pseudo.variant)) >0:
-                  potstr=f"_{cfg.calc.pseudo.variant}"
-            potcar_sym.append(f'{ss}{potstr}')
+      functional=None
+      if potcar is not None:
+            functional=potcar.functional
+            potcar_sym=potcar.symbols
 
-      if potcar is None or cfg.calc.pseudo.variant is not None:
-            potcar=Potcar(potcar_sym, functional=cfg.calc.functional)
-            sym_str=''
-            for ss in potcar_sym:
-                  sym_str += f' {ss}'
-            
-            logger.info(f'POTCAR {cfg.functional} generated:{sym_str}')
-      else:
-            sym_str=''
-            for ss in potcar.symbols:
-                  sym_str += f' {ss}'
-            logger.info(f'POTCAR {potcar.functional} from input{sym_str}')
+      if cfg.calc.pseudo.variant is not None:
+            potcar_sym=[]
+            for ss in symbols:
+                  potstr=''
+                  if len(str(cfg.calc.pseudo.variant)) >0:
+                        potstr=f"_{cfg.calc.pseudo.variant}"
+                  potcar_sym.append(f'{ss}{potstr}')
 
+      if cfg.calc.functional is not None:
+            functional=cfg.calc.functional
+
+      potcar=Potcar(potcar_sym, functional=functional)
+      sym_str=''
+      for ss in potcar_sym:
+            sym_str += f' {ss}'
+      
+      logger.info(f'POTCAR generated: functional {functional}, symbols{sym_str}')
 
       return potcar
 
@@ -223,27 +226,24 @@ def compile_sbatch_script(setup, env, command, calcdir, name):
       return sbatch_lines
 
 def write_exec_scripts(executor, loop_result, destinations):
-    if executor is not None:
-          for name, vaspinput in loop_result.items():
-                calcdir=destinations[name]
-                lines = None
-                executable=False
-                if OmegaConf.select(executor, "slurm") is not None:
-                    settings=executor.slurm
-                    lines=compile_sbatch_script(copy.deepcopy(settings.setup), settings.env, settings.cmd, calcdir, calcdir.name)
-                elif OmegaConf.select(executor, "local") is not None:
-                    settings=executor.local
-                    lines=compile_run_script(env=settings.env, mpiexec=settings.mpiexec, nproc=settings.nproc, command=settings.cmd, \
-                            calcdir=calcdir)
-                    executable=True
-                file=calcdir.parent/Path(f'run.{name}')
-                with open(file, 'w') as f:
-                      f.writelines(lines)
-                if executable:
-                    os.chmod(file, os.stat(file).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    for name, vaspinput in loop_result.items():
+          calcdir=destinations[name]
+          lines = None
+          executable=False
+          if OmegaConf.select(executor, "slurm") is not None:
+              settings=executor.slurm
+              lines=compile_sbatch_script(copy.deepcopy(settings.setup), settings.env, settings.cmd, calcdir, calcdir.name)
+          elif OmegaConf.select(executor, "local") is not None:
+              settings=executor.local
+              lines=compile_run_script(env=settings.env, mpiexec=settings.mpiexec, nproc=settings.nproc, command=settings.cmd, \
+                      calcdir=calcdir)
+              executable=True
+          file=calcdir.parent/Path(f'run.{name}')
+          with open(file, 'w') as f:
+                f.writelines(lines)
+          if executable:
+              os.chmod(file, os.stat(file).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
-    else:
-          logger.warning(f'no executor selected')
 
 
 @hydra.main(config_path="config", config_name="config", version_base=None)
@@ -272,8 +272,11 @@ def main(cfg):
       write_calc(cfg, loop_result, destinations)            
       
       # write slurm scripts
-      exe=cfg.executors[cfg.executor]
-      write_exec_scripts(exe, loop_result, destinations)
+      if cfg.executor is not None:
+            exe=cfg.executors[cfg.executor]
+            write_exec_scripts(exe, loop_result, destinations)
+      else:
+            logger.warning('no executor specified - unable to write run scripts')
 
 
       plural='' if len(loop_result) < 2 else 's'
