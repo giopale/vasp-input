@@ -13,13 +13,6 @@ from logger_setup import logger
 
 
 
-def print_config(cfg):
-      if cfg.print_config:
-          logger.info('printing hydra config file\n')
-          print(OmegaConf.to_yaml(cfg))
-          sys.exit()
-      else:
-          pass
 
 def ask_if_overwrite(dd):
       folder=Path(dd)
@@ -87,12 +80,12 @@ def prepare_potcar(cfg, symbols, potcar=None):
       potcar_sym=[]
       for ss in symbols:
             potstr=''
-            if len(str(cfg.pseudo.variant)) >0:
-                  potstr=f"_{cfg.pseudo.variant}"
+            if len(str(cfg.calc.pseudo.variant)) >0:
+                  potstr=f"_{cfg.calc.pseudo.variant}"
             potcar_sym.append(f'{ss}{potstr}')
 
-      if potcar is None or cfg.pseudo.variant is not None:
-            potcar=Potcar(potcar_sym, functional=cfg.functional)
+      if potcar is None or cfg.calc.pseudo.variant is not None:
+            potcar=Potcar(potcar_sym, functional=cfg.calc.functional)
             sym_str=''
             for ss in potcar_sym:
                   sym_str += f' {ss}'
@@ -127,7 +120,7 @@ def compile_input_loop(cfg, incar, poscar, potcar, kpoints, file_poscar):
       parameters_of_loops=[]
       list_of_loops=[]
       loop_result={}
-      name = cfg.prefix
+      name = cfg.dir.prefix
       
       if cfg.loop is not None:
             name_tmp=name
@@ -143,7 +136,6 @@ def compile_input_loop(cfg, incar, poscar, potcar, kpoints, file_poscar):
                   logger.info(f'looping on {ll.parameter.upper()}: {values}')
       
             list_of_calc=list(product(*list_of_loops))
-            print(list_of_calc)
             for cc in list_of_calc:
                   name_tmp=''      
                   for idx, ii in enumerate(parameters_of_loops):
@@ -175,10 +167,12 @@ def compile_input_loop(cfg, incar, poscar, potcar, kpoints, file_poscar):
       return loop_result
 
 def set_directories(cfg, loop_result):
-      suffix='' if cfg.suffix is None else '-'+cfg.suffix
-      rootdir = Path(os.getcwd())/Path(cfg.prefix+suffix) 
-      subdir = '' if cfg.subdir is None else cfg.subdir
-      workdir= rootdir/subdir
+      prefix=cfg.dir.prefix
+      suffix=cfg.dir.suffix
+      rootdir = Path(os.getcwd())/Path(prefix) 
+      subdir = '' if cfg.dir.subdir is None else cfg.dir.subdir
+      destname=suffix if suffix is not None else './'
+      workdir= rootdir/subdir/Path(destname)
       
       destinations={}
       for name in loop_result.keys():
@@ -188,7 +182,7 @@ def set_directories(cfg, loop_result):
 def write_calc(cfg, loop_result, destinations):
       for name, vaspinput in loop_result.items():
             calcdir=destinations[name]      
-            if decide_overwrite(calcdir, cfg.overwrite):
+            if decide_overwrite(calcdir, cfg.dir.overwrite):
                   calcdir.mkdir(parents=True, exist_ok=True)
                   logger.info(f'{calcdir}')
             else:
@@ -255,9 +249,6 @@ def write_exec_scripts(executor, loop_result, destinations):
 @hydra.main(config_path="config", config_name="config", version_base=None)
 def main(cfg):
 
-      if cfg.print_config:
-            print_config(cfg)
-
       logger.info('startup')
      
       # scan for available files 
@@ -298,15 +289,18 @@ def main(cfg):
 
 # da fare ora:
 
-# DONE scrivere executor per slurm
-# DONE scrivere executor per cseasrv
 # sistemare config file
 # implementare help message
 # implementare precisione variabile per i parametri di loop
-# DONE sistemare root dir
 # imparare come impostare il loop dalla cli
+# clean exif from 'do you want to continue'
+# test config: subdir, prefix, source.*, executor
+
 
  
+# DONE scrivere executor per slurm
+# DONE scrivere executor per cseasrv
+# DONE sistemare root dir
 # DONE creare il naming system e la cartella
 # DONE caricare files su pymatgen
 # DONE scrivere files
