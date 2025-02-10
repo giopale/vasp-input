@@ -391,7 +391,7 @@ pushd /home/palermo/VASP/Si/cell_search/a_5.41 || exit 1
 popd
 ```
 
-`executors` can be added or removed as needed.
+You can add a new executor to the `executors` dictionary. Use the templates provided for either the `slurm` or `local` execution.
 
 
 
