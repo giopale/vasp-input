@@ -32,7 +32,7 @@ template/
 └── POTCAR
 ```
 
-then,from the command line, run:
+then, from the command line, run:
 
 ```bash
 python3 <path_to_source>/vasp-input.py \
@@ -40,7 +40,7 @@ python3 <path_to_source>/vasp-input.py \
     dir.prefix=Si \
     dir.subdir=PBE \
     dir.suffix=cell-search \
-    loop='[{file:poscar,parameter:a,interpolation:interval,val:[5.5,5.75,0.1]}]'  \
+    loop='[{file:poscar,parameter:a,interpolation:interval,val:[5.5,5.75,0.1]}]'  \ #python syntax for dictionary
     dir.overwrite=True \
     executor=daint-gh200
 ```
@@ -392,15 +392,6 @@ popd
 ```
 
 `executors` can be added or removed as needed.
-
-
-## Examples
-
-### CLI
-
-### Config file
-
-## Setting up the pseudopotentials
 
 
 
