@@ -45,6 +45,32 @@ python3 <path_to_source>/vasp-input.py \
     dir.overwrite=True \
     executor=daint-gh200
 ```
+You'll obtain the following tree:
+
+```
+Si
+└── PBE
+    └── cell-search
+        ├── a_5.50
+        │   ├── INCAR
+        │   ├── KPOINTS
+        │   ├── POSCAR
+        │   └── POTCAR
+        ├── a_5.60
+        │   ├── INCAR
+        │   ├── KPOINTS
+        │   ├── POSCAR
+        │   └── POTCAR
+        ├── a_5.70
+        │   ├── INCAR
+        │   ├── KPOINTS
+        │   ├── POSCAR
+        │   └── POTCAR
+        ├── run.a_5.50
+        ├── run.a_5.60
+        └── run.a_5.70
+```
+
 
 ### Configuration file
 
@@ -111,31 +137,7 @@ then run:
 python3 <path_to_source>/vasp-input.py --config-path=$(pwd) --cofig-name=config.yaml
 ```
 
-You'll obtain the following tree:
 
-```
-Si
-└── PBE
-    └── cell-search
-        ├── a_5.50
-        │   ├── INCAR
-        │   ├── KPOINTS
-        │   ├── POSCAR
-        │   └── POTCAR
-        ├── a_5.60
-        │   ├── INCAR
-        │   ├── KPOINTS
-        │   ├── POSCAR
-        │   └── POTCAR
-        ├── a_5.70
-        │   ├── INCAR
-        │   ├── KPOINTS
-        │   ├── POSCAR
-        │   └── POTCAR
-        ├── run.a_5.50
-        ├── run.a_5.60
-        └── run.a_5.70
-```
 
 
 ## Configuration
