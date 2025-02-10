@@ -1,8 +1,8 @@
 hydra:
-  run:
-    dir: ${hydra:runtime.cwd} # set run directory
   job_logging: { disabled }       # Disable job logging
   hydra_logging: { disabled }      # Disable Hydra's internal logging
+  run:
+    dir: ${hydra:runtime.cwd} # set run directory
 
 
 defaults:

@@ -236,7 +236,7 @@ def write_exec_scripts(executor, loop_result, destinations):
           elif OmegaConf.select(executor, "local") is not None:
               settings=executor.local
               lines=compile_run_script(env=settings.env, mpiexec=settings.mpiexec, nproc=settings.nproc, command=settings.cmd, \
-                      calcdir=calcdir)
+                      calcdir=calcdir.name)
               executable=True
           file=calcdir.parent/Path(f'run.{name}')
           with open(file, 'w') as f:
