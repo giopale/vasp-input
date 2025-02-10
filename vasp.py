@@ -78,25 +78,28 @@ def load_files(available_files):
 
 def prepare_potcar(cfg, symbols, potcar=None):
       potcar_sym=[]
-      for ss in symbols:
-            potstr=''
-            if len(str(cfg.calc.pseudo.variant)) >0:
-                  potstr=f"_{cfg.calc.pseudo.variant}"
-            potcar_sym.append(f'{ss}{potstr}')
+      functional=None
+      if potcar is not None:
+            functional=potcar.functional
+            potcar_sym=potcar.symbols
 
-      if potcar is None or cfg.calc.pseudo.variant is not None:
-            potcar=Potcar(potcar_sym, functional=cfg.calc.functional)
-            sym_str=''
-            for ss in potcar_sym:
-                  sym_str += f' {ss}'
-            
-            logger.info(f'POTCAR {cfg.functional} generated:{sym_str}')
-      else:
-            sym_str=''
-            for ss in potcar.symbols:
-                  sym_str += f' {ss}'
-            logger.info(f'POTCAR {potcar.functional} from input{sym_str}')
+      if cfg.calc.pseudo.variant is not None:
+            potcar_sym=[]
+            for ss in symbols:
+                  potstr=''
+                  if len(str(cfg.calc.pseudo.variant)) >0:
+                        potstr=f"_{cfg.calc.pseudo.variant}"
+                  potcar_sym.append(f'{ss}{potstr}')
 
+      if cfg.calc.functional is not None:
+            functional=cfg.calc.functional
+
+      potcar=Potcar(potcar_sym, functional=functional)
+      sym_str=''
+      for ss in potcar_sym:
+            sym_str += f' {ss}'
+      
+      logger.info(f'POTCAR generated: functional {functional}, symbols{sym_str}')
 
       return potcar
 
