@@ -7,7 +7,6 @@ A python-based package to generate VASP input files.
 - parse template input files `INCAR`, `KPOINTS`, `POSCAR`, and `POTCAR`
 - loop over `INCAR` parameters
 - loop over lattice parameter in `POSCAR`
-- generate `vasp` input directories at specified location
 - generate `slurm` scripts or `bash` scripts to run the calculations
 
 ## Installation
