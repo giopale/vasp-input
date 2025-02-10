@@ -9,20 +9,17 @@ import json
 import copy
 import os, stat
 
-
-import logging
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,  # Set the logging level
-    format="%(asctime)s - %(levelname)s - %(message)s",  # Log format
-    datefmt="%Y-%m-%d %H:%M:%S",  # Date format
-    handlers=[
-        logging.StreamHandler()  # Log to console
-    ]
-)
+from logger_setup import logger
 
 
+
+def print_config(cfg):
+      if cfg.print_config:
+          logger.info('printing hydra config file\n')
+          print(OmegaConf.to_yaml(cfg))
+          sys.exit()
+      else:
+          pass
 
 def ask_if_overwrite(dd):
       folder=Path(dd)
@@ -49,7 +46,7 @@ def scan_vasp_files(keys,dict_files):
 
 
       if dict_files.dir is None:
-            logging.warning('source.dir not set')
+            logger.warning('source.dir not set')
       sourcedir = Path(dict_files.dir)
       results={}
 
@@ -66,14 +63,14 @@ def scan_vasp_files(keys,dict_files):
       err=False
       for key,val in results.items():
             if val is None:
-                  logging.error(f'{key} not found')
+                  logger.error(f'{key} not found')
                   if key != 'potcar':
                         err=True
       if err:
             sys.exit()
       
       flist="\n".join([ str(ii) for ii in results.values()])
-      logging.debug(f'the following files were found:\n{flist}')
+      logger.debug(f'the following files were found:\n{flist}')
       
       return results
 
@@ -100,12 +97,12 @@ def prepare_potcar(cfg, symbols, potcar=None):
             for ss in potcar_sym:
                   sym_str += f' {ss}'
             
-            logging.info(f'POTCAR {cfg.functional} generated:{sym_str}')
+            logger.info(f'POTCAR {cfg.functional} generated:{sym_str}')
       else:
             sym_str=''
             for ss in potcar.symbols:
                   sym_str += f' {ss}'
-            logging.info(f'POTCAR {potcar.functional} from input{sym_str}')
+            logger.info(f'POTCAR {potcar.functional} from input{sym_str}')
 
 
       return potcar
@@ -143,7 +140,7 @@ def compile_input_loop(cfg, incar, poscar, potcar, kpoints, file_poscar):
                         parameters_of_loops.append({'file':ll.file,'parameter':ll.parameter})
                         values=np.arange(ll.val[0], ll.val[1], ll.val[2])
                         list_of_loops.append(values)
-                  logging.info(f'looping on {ll.parameter.upper()}: {values}')
+                  logger.info(f'looping on {ll.parameter.upper()}: {values}')
       
             list_of_calc=list(product(*list_of_loops))
             print(list_of_calc)
@@ -163,7 +160,7 @@ def compile_input_loop(cfg, incar, poscar, potcar, kpoints, file_poscar):
                                     poscar_lines[1]=f'{cc[idx]:.4f}\n'
                               else:
                                     err=NotImplementedError(f'loop over parameter {ii["parameter"]} not implemented')
-                                    logging.error(err)
+                                    logger.error(err)
                                     sys.exit()
                         poscar=Poscar.from_str("".join(poscar_lines))
                               
@@ -179,7 +176,7 @@ def compile_input_loop(cfg, incar, poscar, potcar, kpoints, file_poscar):
 
 def set_directories(cfg, loop_result):
       suffix='' if cfg.suffix is None else '-'+cfg.suffix
-      rootdir = Path(cfg.rootdir)/Path(cfg.prefix+suffix) 
+      rootdir = Path(os.getcwd())/Path(cfg.prefix+suffix) 
       subdir = '' if cfg.subdir is None else cfg.subdir
       workdir= rootdir/subdir
       
@@ -193,9 +190,9 @@ def write_calc(cfg, loop_result, destinations):
             calcdir=destinations[name]      
             if decide_overwrite(calcdir, cfg.overwrite):
                   calcdir.mkdir(parents=True, exist_ok=True)
-                  logging.info(f'{calcdir}')
+                  logger.info(f'{calcdir}')
             else:
-                  logging.info('stopping')
+                  logger.info('stopping')
                   return 0
             
             vaspinput.write_input(calcdir)
@@ -213,7 +210,7 @@ def compile_sbatch_script(setup, env, command, calcdir, name):
 
       for key, val in setup.items():
             if val is None:
-                  logging.warning(f'slurm setup {key} = {val}!')
+                  logger.warning(f'slurm setup {key} = {val}!')
 
             # deal with duplicate values (--hint can repeat)
             if not isinstance(val, str) and hasattr(val, "__len__") and (len(val) > 1):
@@ -241,7 +238,8 @@ def write_exec_scripts(executor, loop_result, destinations):
                     settings=executor.slurm
                     lines=compile_sbatch_script(copy.deepcopy(settings.setup), settings.env, settings.cmd, calcdir, calcdir.name)
                 elif OmegaConf.select(executor, "local") is not None:
-                    lines=compile_run_script(env=setup.env, mpiexec=setup.mpiexec, nproc=setup.nproc, command=setup.cmd, \
+                    settings=executor.local
+                    lines=compile_run_script(env=settings.env, mpiexec=settings.mpiexec, nproc=settings.nproc, command=settings.cmd, \
                             calcdir=calcdir)
                     executable=True
                 file=calcdir.parent/Path(f'run.{name}')
@@ -251,21 +249,24 @@ def write_exec_scripts(executor, loop_result, destinations):
                     os.chmod(file, os.stat(file).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
     else:
-          logging.warning(f'no executor selected')
+          logger.warning(f'no executor selected')
 
 
 @hydra.main(config_path="config", config_name="config", version_base=None)
 def main(cfg):
 
-      logging.info('startup')
+      if cfg.print_config:
+            print_config(cfg)
+
+      logger.info('startup')
      
       # scan for available files 
-      logging.debug(f'scanning for input {" ".join([ ii for ii in cfg.source.values() if ii is not None])}')
+      logger.debug(f'scanning for input {" ".join([ ii for ii in cfg.source.values() if ii is not None])}')
       available_files=scan_vasp_files(['INCAR', 'POSCAR', 'KPOINTS','POTCAR'], cfg.source)
 
       # load parts of the input
       incar, poscar, potcar, kpoints = load_files(available_files)
-      logging.debug(f'the reference INCAR is:\n{str(incar)[:-1]}')
+      logger.debug(f'the reference INCAR is:\n{str(incar)[:-1]}')
 
       # prepare potcar, from config spec or from input
       potcar = prepare_potcar(cfg, poscar.structure.symbol_set, potcar) 
@@ -285,7 +286,7 @@ def main(cfg):
 
 
       plural='' if len(loop_result) < 2 else 's'
-      logging.info(f'{len(loop_result)} folder{plural} total')
+      logger.info(f'{len(loop_result)} folder{plural} total')
      
       
 
@@ -302,6 +303,9 @@ def main(cfg):
 # sistemare config file
 # implementare help message
 # implementare precisione variabile per i parametri di loop
+# DONE sistemare root dir
+# imparare come impostare il loop dalla cli
+
  
 # DONE creare il naming system e la cartella
 # DONE caricare files su pymatgen
