@@ -203,12 +203,12 @@ def write_calc(cfg, loop_result, destinations):
             
             vaspinput.write_input(calcdir)
 
-def compile_sbatch_script(setup, env, command, calcdir, name):
+def compile_sbatch_script(setup, env, command,  name):
 
       if setup['job-name'] is None:
             setup['job-name']=name[-12:]
-      setup['error']=str(calcdir.name)+'/err'
-      setup['output']=str(calcdir.name)+'/log'
+      setup['error']=str(name)+'/err'
+      setup['output']=str(name)+'/log'
       if setup['partition'] == 'debug':
             setup['time']='00:30:00'
         
@@ -229,7 +229,7 @@ def compile_sbatch_script(setup, env, command, calcdir, name):
       
       sbatch_lines.append('\n'+env+'\n')
       
-      sbatch_lines.append(f'pushd {calcdir} || exit 1\n    ' + command + '\npopd\n')
+      sbatch_lines.append(f'pushd {name} || exit 1\n    ' + command + '\npopd\n')
       sbatch_lines.append(f'\necho $SLURM_JOB_ID > run.{name}.success\n')
       
       return sbatch_lines
@@ -241,7 +241,7 @@ def write_exec_scripts(executor, loop_result, destinations):
           executable=False
           if OmegaConf.select(executor, "slurm") is not None:
               settings=executor.slurm
-              lines=compile_sbatch_script(copy.deepcopy(settings.setup), settings.env, settings.cmd, calcdir, calcdir.name)
+              lines=compile_sbatch_script(copy.deepcopy(settings.setup), settings.env, settings.cmd, calcdir.name)
           elif OmegaConf.select(executor, "local") is not None:
               settings=executor.local
               lines=compile_run_script(env=settings.env, mpiexec=settings.mpiexec, nproc=settings.nproc, command=settings.cmd, \
