@@ -2,6 +2,7 @@ import hydra
 from pathlib import Path
 from pymatgen.io.vasp import Poscar, Kpoints, Incar, Potcar, VaspInput
 from omegaconf import OmegaConf
+from omegaconf.listconfig import ListConfig
 import numpy as np
 import sys
 from itertools import product
@@ -169,11 +170,19 @@ def compile_input_loop(cfg, incar, poscar, potcar, kpoints, file_poscar):
       
       return loop_result
 
+def join_if_list(inp, glue='-'):
+      if inp is None:
+            return inp
+      elif isinstance(inp, str):
+            return inp
+      elif isinstance(inp, ListConfig):
+             return glue.join([str(ii) for ii in inp if len(ii)>0])
+
 def set_directories(cfg, loop_result):
-      prefix=cfg.dir.prefix
-      suffix=cfg.dir.suffix
+      prefix=join_if_list(cfg.dir.prefix)
+      suffix=join_if_list(cfg.dir.suffix)
       rootdir = Path(os.getcwd())/Path(prefix) 
-      subdir = '' if cfg.dir.subdir is None else cfg.dir.subdir
+      subdir = '' if cfg.dir.subdir is None else join_if_list(cfg.dir.subdir)
       destname=suffix if suffix is not None else './'
       workdir= rootdir/subdir/Path(destname)
       

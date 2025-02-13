@@ -29,10 +29,20 @@ executors:
             local:
                   cmd: vasp_std
                   nproc: 128
-                  mpiexec: mpirun
+                  mpiexec: mpirun \$mpi_flags
                   env: |
-                      export SPACK_ROOT=/home/palermo/spack;
-                      export SPACK_COLOR=always;
-                      source \${SPACK_ROOT}/share/spack/setup-env.sh
-                      spack load /cptwhgb #vasp@6.4.3~cuda+fftlib+hdf5+openmp+shmem
+                    export SPACK_ROOT=/home/palermo/spack;
+                    export SPACK_COLOR=always;
+                    source ${SPACK_ROOT}/share/spack/setup-env.sh
+                    spack load /cptwhgb #vasp@6.4.3~cuda+fftlib+hdf5+openmp+shmem
+                    
+                    
+                    nthreads=1 # num OMP threads, <= 64
+                    ncores_package=64 # this machine has two sockets of 64 cores each
+                    nproc_package=$(($ncores_package/$nthreads))
+                    nproc=$((2*$nproc_package))
+
+                    mpi_flags="-np $nproc --map-by ppr:$nproc_package:package:PE=$nthreads --bind-to core \
+                     -x OMP_NUM_THREADS=$nthreads -x OMP_STACKSIZE=512m \
+                     -x OMP_PLACES=cores -x OMP_PROC_BIND=close \"
       
