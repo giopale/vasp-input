@@ -113,7 +113,6 @@ def prepare_potcar(cfg, symbols_poscar, potcar=None):
 
       if cfg.calc.functional is not None:
             functional=cfg.calc.functional
-
       potcar_sym=reorder_list(symbols_poscar, potcar_sym)
 
       potcar=Potcar(potcar_sym, functional=functional)
@@ -139,6 +138,14 @@ def compile_run_script(env, mpiexec, nproc, command, calcdir):
       lines.append(f'pushd {calcdir} || exit 1\n    ' + cmd + '\npopd\n')
       
       return lines
+
+
+def check_symbols_order(loop_result):
+      for key, ii in loop_result.items():
+            pot_sym=[ii.split('_')[0]  for ii in ii.potcar.symbols]
+            if (ii.poscar.site_symbols != pot_sym):
+                  logger.error(f'symbols in POTCAR {pot_sym} and POSCAR {ii.poscar.site_symbols} are ordered differently')
+                  sys.exit()
 
 
 def compile_input_loop(cfg, incar, poscar, potcar, kpoints, file_poscar, parallelism_dict=None):
@@ -205,6 +212,8 @@ def compile_input_loop(cfg, incar, poscar, potcar, kpoints, file_poscar, paralle
 
       else:
             loop_result.update({name:VaspInput(incar=incar,poscar=poscar, kpoints=kpoints, potcar=potcar)})
+
+      check_symbols_order(loop_result) # exit if symbols are not correctly set
       
       return loop_result
 
@@ -329,16 +338,16 @@ def main(cfg):
       incar_cfg=cfg.get('incar',None)
       if incar_cfg is not None:
             incar=Incar(incar_cfg)
-            msg=' '.join(str(incar).split('\n'))
+            msg='; '.join(str(incar).split('\n'))
             logger.info('loading INCAR from config file:')
             logger.info(f'{msg}')
       else:
-            msg=' '.join(str(incar).split('\n'))
+            msg='; '.join(str(incar).split('\n'))
             logger.info(f'loading INCAR:')
             logger.info(f'{msg}')
 
       # prepare potcar, from config spec or from input
-      potcar = prepare_potcar(cfg, poscar.structure.symbol_set, potcar) 
+      potcar = prepare_potcar(cfg, poscar.site_symbols, potcar) 
 
       # prepare parallelization flags for incar file
       para_dict=set_parallelism_dict(cfg)
@@ -346,6 +355,8 @@ def main(cfg):
       # loop over parameters
       loop_result = compile_input_loop(cfg, incar, poscar, potcar, kpoints, available_files['POSCAR'],parallelism_dict=para_dict)
 
+      # check poscar/potcar species order
+      
       # set directories
       destinations=set_directories(cfg, loop_result)
 
