@@ -160,11 +160,19 @@ def compile_input_loop(cfg, incar, poscar, potcar, kpoints, file_poscar, paralle
                         list_of_loops.append(values)
                   elif 'interval' in ll.interpolation:
                         parameters_of_loops.append({'file':ll.file,'parameter':ll.parameter})
-                        values=np.arange(ll.val[0], ll.val[1], ll.val[2])
+                        if 'kpoints' in ll.parameter:
+                              c_over_a=ll.get('c_over_a',1)
+                              logger.info(f'looping over KPOINTS with c/a={c_over_a:.2f}')
+                              krange=np.arange(ll.val[0], ll.val[1], ll.val[2])
+                              values=[[ii, ii, int(round(ii/c_over_a,0))] for ii in krange]
+                        else:      
+                              values=np.arange(ll.val[0], ll.val[1], ll.val[2])
                         list_of_loops.append(values)
                   logger.info(f'looping on {ll.parameter.upper()}: {values}')
+                  
       
             list_of_calc=list(product(*list_of_loops))
+            poscar_new=poscar
             for cc in list_of_calc:
                   name_tmp=''      
                   for idx, ii in enumerate(parameters_of_loops):
@@ -186,6 +194,9 @@ def compile_input_loop(cfg, incar, poscar, potcar, kpoints, file_poscar, paralle
                                     err=NotImplementedError(f'loop over parameter {ii["parameter"]} not implemented')
                                     logger.error(err)
                                     sys.exit()
+                        if ii['file'].lower() == 'kpoints':
+                              kpoints=Kpoints.monkhorst_automatic(tuple(cc[idx]), comment='automatic Monkhorst-Pack Kpoint grid') 
+                              name_tmp=name_tmp+f'{dash}K{cc[idx][0]:d}_{cc[idx][1]:d}_{cc[idx][2]:d}'
                               
 
                   newinput=VaspInput(incar=copy.deepcopy(incar),poscar=copy.deepcopy(poscar_new), \
@@ -315,7 +326,16 @@ def main(cfg):
 
       # load parts of the input
       incar, poscar, potcar, kpoints = load_files(available_files)
-      logger.debug(f'the reference INCAR is:\n{str(incar)[:-1]}')
+      incar_cfg=cfg.get('incar',None)
+      if incar_cfg is not None:
+            incar=Incar(incar_cfg)
+            msg=' '.join(str(incar).split('\n'))
+            logger.info('loading INCAR from config file:')
+            logger.info(f'{msg}')
+      else:
+            msg=' '.join(str(incar).split('\n'))
+            logger.info(f'loading INCAR:')
+            logger.info(f'{msg}')
 
       # prepare potcar, from config spec or from input
       potcar = prepare_potcar(cfg, poscar.structure.symbol_set, potcar) 
