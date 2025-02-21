@@ -38,7 +38,7 @@ loop:
 calc:
   functional: PBE
   pseudo:
-    variant: null # 'sv_GW'  # '' for standard, 'sv_GW' for 'Ti_sv_GW'; null for from input
+    variant: null # 'null' or list ['O_GW', 'Ti_sv_GW']
 
 
 executor: null
