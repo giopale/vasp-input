@@ -3,14 +3,16 @@
 executors:
       daint-gh200:
             slurm:
-                  cmd: srun --cpu-bind=socket ~/mps-wrapper.sh vasp_std 
+                  cmd: ~/mps-wrapper.sh vasp_std 
+                  srun_flags:
+                        cpu-bind: [sockets, verbose]
+                        ntasks-per-node: 32
                   setup:
                         job-name: null
                         account: lp07
                         constraint: gpu
                         hint: [nomultithread, exclusive]
                         nodes: 1
-                        ntasks-per-node: 32
                         ntasks-per-core: 1
                         cpus-per-task: 1
                         partition: normal

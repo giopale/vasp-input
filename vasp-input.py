@@ -120,11 +120,14 @@ def compile_run_script(env, mpiexec, nproc, command, calcdir):
       return lines
 
 
-def compile_input_loop(cfg, incar, poscar, potcar, kpoints, file_poscar):
+def compile_input_loop(cfg, incar, poscar, potcar, kpoints, file_poscar, parallelism_dict=None):
       parameters_of_loops=[]
       list_of_loops=[]
       loop_result={}
       name = cfg.dir.prefix
+      
+      if parallelism_dict is not None:
+            incar.update(parallelism_dict)
       
       if cfg.loop is not None:
             name_tmp=name
@@ -202,8 +205,9 @@ def write_calc(cfg, loop_result, destinations):
                   return 0
             
             vaspinput.write_input(calcdir)
+      logger.info(f'parent directory: {calcdir.parent}')
 
-def compile_sbatch_script(setup, env, command,  name):
+def compile_sbatch_script(setup, env, srun_flags, command,  name):
 
       if setup['job-name'] is None:
             setup['job-name']=name[-12:]
@@ -229,7 +233,19 @@ def compile_sbatch_script(setup, env, command,  name):
       
       sbatch_lines.append('\n'+env+'\n')
       
-      sbatch_lines.append(f'pushd {name} || exit 1\n    ' + command + '\npopd\n')
+      # set srun flags
+
+      result=['srun']
+      for key, val in srun_flags.items():
+            # deal with duplicate values
+            if not isinstance(val, str) and hasattr(val, "__len__") and (len(val) > 1):
+                  for ii in val:
+                        result.append(f'--{key}={ii}')
+            else:
+                  result.append(f'--{key}={val}')
+            
+      command = ' '.join(result+[str(command)])
+      sbatch_lines.append(f'pushd {name} || exit 1\n    ' +  command + '\npopd\n')
       sbatch_lines.append(f'\necho $SLURM_JOB_ID > run.{name}.success\n')
       
       return sbatch_lines
@@ -241,7 +257,7 @@ def write_exec_scripts(executor, loop_result, destinations):
           executable=False
           if OmegaConf.select(executor, "slurm") is not None:
               settings=executor.slurm
-              lines=compile_sbatch_script(copy.deepcopy(settings.setup), settings.env, settings.cmd, calcdir.name)
+              lines=compile_sbatch_script(copy.deepcopy(settings.setup), settings.env, settings.srun_flags, settings.cmd, calcdir.name)
           elif OmegaConf.select(executor, "local") is not None:
               settings=executor.local
               lines=compile_run_script(env=settings.env, mpiexec=settings.mpiexec, nproc=settings.nproc, command=settings.cmd, \
@@ -253,6 +269,15 @@ def write_exec_scripts(executor, loop_result, destinations):
           if executable:
               os.chmod(file, os.stat(file).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
+def set_parallelism_dict(cfg):
+      if cfg.executor is not None:
+            if 'daint' in cfg.executor:
+                  exe=cfg.executors[cfg.executor]
+                  ngpus=exe.slurm.setup.nodes * 4
+                  para_dict={'KPAR':ngpus}
+      else:
+            para_dict=None
+      return para_dict
 
 
 @hydra.main(config_path="config", config_name="config", version_base=None)
@@ -270,9 +295,12 @@ def main(cfg):
 
       # prepare potcar, from config spec or from input
       potcar = prepare_potcar(cfg, poscar.structure.symbol_set, potcar) 
-      
+
+      # prepare parallelization flags for incar file
+      para_dict=set_parallelism_dict(cfg)
+            
       # loop over parameters
-      loop_result = compile_input_loop(cfg, incar, poscar, potcar, kpoints, available_files['POSCAR'])
+      loop_result = compile_input_loop(cfg, incar, poscar, potcar, kpoints, available_files['POSCAR'],parallelism_dict=para_dict)
 
       # set directories
       destinations=set_directories(cfg, loop_result)
