@@ -45,7 +45,7 @@ def scan_vasp_files(keys,dict_files):
       results={}
 
       for key in keys:
-            value=next(sourcedir.glob(f"{key}*"), None)
+            value=next(sourcedir.glob(f"{key}"), None)
             results.update({key:value})
       
       for key, value in dict_files.items(): # <--------------------------- to test
@@ -57,9 +57,11 @@ def scan_vasp_files(keys,dict_files):
       err=False
       for key,val in results.items():
             if val is None:
-                  logger.error(f'{key} not found')
-                  if key != 'potcar':
+                  if key.lower() != 'potcar':
                         err=True
+                        logger.error(f'{key} not found')
+                  else:
+                        logger.warning(f'{key} not found')
       if err:
             sys.exit()
       
@@ -69,31 +71,50 @@ def scan_vasp_files(keys,dict_files):
       return results
 
 def load_files(available_files):
-      
-      incar=Incar.from_file(available_files['INCAR'])
-      poscar=Poscar.from_file(available_files['POSCAR'])
-      potcar=Potcar.from_file(available_files['POTCAR'])
-      kpoints=Kpoints.from_file(available_files['KPOINTS'])
+
+      incar, poscar, potcar, kpoints= None, None, None, None
+      if available_files['INCAR'] is not None:
+            incar=Incar.from_file(available_files['INCAR'])
+      if available_files['POSCAR'] is not None:
+            poscar=Poscar.from_file(available_files['POSCAR'], check_for_potcar=False) # set symbols manually later
+      if available_files['POTCAR'] is not None:
+            potcar=Potcar.from_file(available_files['POTCAR'])
+      if available_files['KPOINTS'] is not None:
+            kpoints=Kpoints.from_file(available_files['KPOINTS'])
 
       return incar, poscar, potcar, kpoints
 
-def prepare_potcar(cfg, symbols, potcar=None):
-      potcar_sym=[]
+def reorder_list(reference, target):
+      mapping = {ref: i for i, ref in enumerate(reference)}
+      return sorted(target, key=lambda x: mapping[x.split('_')[0]])
+
+def prepare_potcar(cfg, symbols_poscar, potcar=None):
+      potcar_sym=symbols_poscar
       functional=None
+
       if potcar is not None:
             functional=potcar.functional
             potcar_sym=potcar.symbols
 
       if cfg.calc.pseudo.variant is not None:
-            potcar_sym=[]
-            for ss in symbols:
-                  potstr=''
-                  if len(str(cfg.calc.pseudo.variant)) >0:
-                        potstr=f"_{cfg.calc.pseudo.variant}"
-                  potcar_sym.append(f'{ss}{potstr}')
+            potcar_sym=[str(ii) for ii in cfg.calc.pseudo.variant]
+            elements_cfg=[]
+            for ii in potcar_sym:
+                  elements_cfg.append(ii.split('_')[0])
+
+            if set(elements_cfg) != set(symbols_poscar):
+                  logger.error(f'poscar symbols {symbols_poscar} and pseudo variants {potcar_sym} are not compatible')
+                  sys.exit()
+            #for ss in symbols_poscar:
+            #      potstr=''
+            #      if len(str(cfg.calc.pseudo.variant)) >0:
+            #            potstr=f"_{cfg.calc.pseudo.variant}"
+            #      potcar_sym.append(f'{ss}{potstr}')
 
       if cfg.calc.functional is not None:
             functional=cfg.calc.functional
+
+      potcar_sym=reorder_list(symbols_poscar, potcar_sym)
 
       potcar=Potcar(potcar_sym, functional=functional)
       sym_str=''
@@ -133,6 +154,7 @@ def compile_input_loop(cfg, incar, poscar, potcar, kpoints, file_poscar, paralle
             name_tmp=name
             for ll in cfg.loop:
                   if 'list' in ll.interpolation:
+                        eoscar=Poscar.from_str("".join(poscar_lines))
                         parameters_of_loops.append({'file':ll.file,'parameter':ll.parameter})
                         values=ll.val
                         list_of_loops.append(values)
@@ -157,14 +179,16 @@ def compile_input_loop(cfg, incar, poscar, potcar, kpoints, file_poscar, paralle
                                     with open(file_poscar,'r') as f:
                                           poscar_lines=f.readlines()
                                     poscar_lines[1]=f'{cc[idx]:.4f}\n'
+                                    poscar_new=Poscar.from_str("".join(poscar_lines))
+                              if ii["parameter"].lower() == 'volume':
+                                    poscar_new=poscar.structure.lattice.scale(cc[idx])
                               else:
                                     err=NotImplementedError(f'loop over parameter {ii["parameter"]} not implemented')
                                     logger.error(err)
                                     sys.exit()
-                        poscar=Poscar.from_str("".join(poscar_lines))
                               
 
-                  newinput=VaspInput(incar=copy.deepcopy(incar),poscar=copy.deepcopy(poscar), \
+                  newinput=VaspInput(incar=copy.deepcopy(incar),poscar=copy.deepcopy(poscar_new), \
                                                 kpoints=copy.deepcopy(kpoints), potcar=copy.deepcopy(potcar))                 
                   loop_result.update({name_tmp:newinput})
 
@@ -270,13 +294,13 @@ def write_exec_scripts(executor, loop_result, destinations):
               os.chmod(file, os.stat(file).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 def set_parallelism_dict(cfg):
+      para_dict=None
       if cfg.executor is not None:
             if 'daint' in cfg.executor:
                   exe=cfg.executors[cfg.executor]
                   ngpus=exe.slurm.setup.nodes * 4
                   para_dict={'KPAR':ngpus}
-      else:
-            para_dict=None
+
       return para_dict
 
 
