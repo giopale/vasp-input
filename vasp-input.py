@@ -6,7 +6,7 @@ from omegaconf.listconfig import ListConfig
 import numpy as np
 import sys
 from itertools import product
-import json
+import json, yaml
 import copy
 import os, stat
 
@@ -158,6 +158,7 @@ def compile_input_loop(
     list_of_loops = []
     loop_result = {}
     name = cfg.dir.prefix
+    messages=[]
 
     if parallelism_dict is not None:
         incar.update(parallelism_dict)
@@ -177,6 +178,9 @@ def compile_input_loop(
                     logger.info(f"looping over KPOINTS with c/a={c_over_a:.2f}")
                     krange = np.arange(ll.val[0], ll.val[1], ll.val[2])
                     values = [[ii, ii, int(round(ii / c_over_a, 0))] for ii in krange]
+                    if ll.get('include_gamma', True):
+                        if not [1, 1, 1] in values:
+                            values=[[1,1,1],*values]
                 else:
                     values = np.arange(ll.val[0], ll.val[1], ll.val[2])
                 list_of_loops.append(values)
@@ -202,7 +206,8 @@ def compile_input_loop(
                         poscar_lines[1] = f"{cc[idx]:.4f}\n"
                         poscar_new = Poscar.from_str("".join(poscar_lines))
                     if ii["parameter"].lower() == "volume":
-                        poscar_new = poscar.structure.lattice.scale(cc[idx])
+                        poscar.structure.lattice=poscar.structure.lattice.scale(cc[idx])
+                        poscar_new = poscar
                     else:
                         err = NotImplementedError(
                             f'loop over parameter {ii["parameter"]} not implemented'
@@ -210,9 +215,18 @@ def compile_input_loop(
                         logger.error(err)
                         sys.exit()
                 if ii["file"].lower() == "kpoints":
-                    kpoints = Kpoints.monkhorst_automatic(
-                        tuple(cc[idx]), comment="automatic Monkhorst-Pack Kpoint grid"
-                    )
+                    mesh_type=ii.get('mesh_type', 'Gamma')
+                    if 'monk' in mesh_type.lower():
+                        messages.append('KPOINTS mesh_type is Monkhorst-Pack')
+                        kpoints = Kpoints.monkhorst_automatic(
+                            tuple(cc[idx]), comment="automatic Monkhorst-Pack Kpoint grid"
+                        )
+                    else:
+                        messages.append('KPOINTS mesh_type is Gamma-centered')
+                
+                        kpoints = Kpoints.gamma_automatic(
+                            tuple(cc[idx]), comment="automatic Gamma-centered Kpoint grid"
+                        )
                     name_tmp = (
                         name_tmp
                         + f"{dash}K{cc[idx][0]:d}_{cc[idx][1]:d}_{cc[idx][2]:d}"
@@ -236,6 +250,8 @@ def compile_input_loop(
         )
 
     check_symbols_order(loop_result)  # exit if symbols are not correctly set
+    if len(messages)>0:
+        logger.info(messages[0])
 
     return loop_result
 
@@ -353,6 +369,19 @@ def write_exec_scripts(executor, loop_result, destinations):
                 file, os.stat(file).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
             )
 
+def write_dpdisp_tasks(executor, loop_result, destinations):
+    tasks=[]
+    for name, vaspinput in loop_result.items():
+        calcdir = destinations[name]
+        tt={
+              "command": "mpirun -np ${DPDISPATCHER_CPU_PER_NODE} vasp_std",
+              "task_work_path": str(calcdir),
+            }
+        tasks.append(tt)
+    file = calcdir.parent / Path(f"tasks.yaml")
+    with open(file, "w") as f:
+        yaml.dump(tasks, f, default_flow_style=False, indent=4)
+        #json.dump(tasks, f, indent=4)
 
 def set_parallelism_dict(cfg):
     para_dict = None
@@ -420,6 +449,8 @@ def main(cfg):
     if cfg.executor is not None:
         exe = cfg.executors[cfg.executor]
         write_exec_scripts(exe, loop_result, destinations)
+        if 'csea' in cfg.executor:
+            write_dpdisp_tasks(exe, loop_result, destinations)
     else:
         logger.warning("no executor specified - unable to write run scripts")
 
