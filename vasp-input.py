@@ -9,6 +9,7 @@ from itertools import product
 import json, yaml
 import copy
 import os, stat
+import subprocess
 
 from logger_setup import logger
 
@@ -33,55 +34,102 @@ def decide_overwrite(dd, overwrite):
         return ask_if_overwrite(dd)
 
 
+def is_single_line(aa):
+    if isinstance(aa, str):
+        lines = aa.strip().splitlines()
+        if len(lines) == 1:  # Single-line string, likely a path
+            return Path(aa).is_file()
+    return False
+
+
 def scan_vasp_files(keys, dict_files):
     # scan a directory for desired files
     # if specified, find other files and add them (with priority)
+    # or manual input (higher priority)
 
     if dict_files.dir is None:
         logger.warning("source.dir not set")
     sourcedir = Path(dict_files.dir)
     results = {}
 
+    # find files corresponding to keys
     for key in keys:
         value = next(sourcedir.glob(f"{key}"), None)
         results.update({key: value})
 
+    # build out dict
     for key, value in dict_files.items():  # <--------------------------- to test
         if key == "dir":
             continue
         elif value is not None:
-            if Path(value).exists():
-                available_files.update({key.upper(): Path(value)})
-    err = False
-    for key, val in results.items():
-        if val is None:
-            if key.lower() != "potcar":
-                err = True
-                logger.error(f"{key} not found")
+            if is_single_line(value):
+                if Path(value).exists():
+                    results.update({key.upper(): Path(value)})
+                else:
+                    logger.warning(f"{value} not found")
             else:
-                logger.warning(f"{key} not found")
-    if err:
-        sys.exit()
+                results.update({key.upper(): value})
+    err = False
 
-    flist = "\n".join([str(ii) for ii in results.values()])
-    logger.debug(f"the following files were found:\n{flist}")
+    # if file provided manually, overwrite
+
+    #    for key, val in results.items():
+    #        if val is None:
+    #            if key.lower() != "potcar":
+    #                err = True
+    #                logger.error(f"{key} not found")
+    #            else:
+    #                logger.warning(f"{key} not found")
+    #    if err:
+    #        sys.exit()
+
+    #    flist = "\n".join([str(ii) for ii in results.values()])
+    #    logger.debug(f"the following files were found:\n{flist}")
 
     return results
+
+
+def load_poscar(value):
+    if is_single_line(value):
+        poscar = Poscar.from_file(
+            value, check_for_potcar=False
+        )  # set symbols manually later
+    else:
+        poscar = Poscar.from_str(
+            value,
+        )  # set symbols manually later
+    return poscar
+
+
+def load_incar(value):
+    if is_single_line(value):
+        incar = Incar.from_file(value)
+    else:
+        incar = Incar.from_dict(value)
+
+    return incar
+
+
+def load_kpoints(value):
+    if is_single_line(value):
+        kpoints = Kpoints.from_file(value)
+    else:
+        kpoints = Kpoints.from_str(value)
+    return kpoints
 
 
 def load_files(available_files):
 
     incar, poscar, potcar, kpoints = None, None, None, None
     if available_files["INCAR"] is not None:
-        incar = Incar.from_file(available_files["INCAR"])
+        incar = load_incar(available_files["INCAR"])
     if available_files["POSCAR"] is not None:
-        poscar = Poscar.from_file(
-            available_files["POSCAR"], check_for_potcar=False
-        )  # set symbols manually later
+        poscar = load_poscar(available_files["POSCAR"])
+
     if available_files["POTCAR"] is not None:
         potcar = Potcar.from_file(available_files["POTCAR"])
     if available_files["KPOINTS"] is not None:
-        kpoints = Kpoints.from_file(available_files["KPOINTS"])
+        kpoints = load_kpoints(available_files["KPOINTS"])
 
     return incar, poscar, potcar, kpoints
 
@@ -158,7 +206,7 @@ def compile_input_loop(
     list_of_loops = []
     loop_result = {}
     name = cfg.dir.prefix
-    messages=[]
+    messages = []
 
     if parallelism_dict is not None:
         incar.update(parallelism_dict)
@@ -178,9 +226,9 @@ def compile_input_loop(
                     logger.info(f"looping over KPOINTS with c/a={c_over_a:.2f}")
                     krange = np.arange(ll.val[0], ll.val[1], ll.val[2])
                     values = [[ii, ii, int(round(ii / c_over_a, 0))] for ii in krange]
-                    if ll.get('include_gamma', True):
+                    if ll.get("include_gamma", True):
                         if not [1, 1, 1] in values:
-                            values=[[1,1,1],*values]
+                            values = [[1, 1, 1], *values]
                 else:
                     values = np.arange(ll.val[0], ll.val[1], ll.val[2])
                 list_of_loops.append(values)
@@ -206,7 +254,9 @@ def compile_input_loop(
                         poscar_lines[1] = f"{cc[idx]:.4f}\n"
                         poscar_new = Poscar.from_str("".join(poscar_lines))
                     if ii["parameter"].lower() == "volume":
-                        poscar.structure.lattice=poscar.structure.lattice.scale(cc[idx])
+                        poscar.structure.lattice = poscar.structure.lattice.scale(
+                            cc[idx]
+                        )
                         poscar_new = poscar
                     else:
                         err = NotImplementedError(
@@ -215,17 +265,19 @@ def compile_input_loop(
                         logger.error(err)
                         sys.exit()
                 if ii["file"].lower() == "kpoints":
-                    mesh_type=ii.get('mesh_type', 'Gamma')
-                    if 'monk' in mesh_type.lower():
-                        messages.append('KPOINTS mesh_type is Monkhorst-Pack')
+                    mesh_type = ii.get("mesh_type", "Gamma")
+                    if "monk" in mesh_type.lower():
+                        messages.append("KPOINTS mesh_type is Monkhorst-Pack")
                         kpoints = Kpoints.monkhorst_automatic(
-                            tuple(cc[idx]), comment="automatic Monkhorst-Pack Kpoint grid"
+                            tuple(cc[idx]),
+                            comment="automatic Monkhorst-Pack Kpoint grid",
                         )
                     else:
-                        messages.append('KPOINTS mesh_type is Gamma-centered')
-                
+                        messages.append("KPOINTS mesh_type is Gamma-centered")
+
                         kpoints = Kpoints.gamma_automatic(
-                            tuple(cc[idx]), comment="automatic Gamma-centered Kpoint grid"
+                            tuple(cc[idx]),
+                            comment="automatic Gamma-centered Kpoint grid",
                         )
                     name_tmp = (
                         name_tmp
@@ -250,7 +302,7 @@ def compile_input_loop(
         )
 
     check_symbols_order(loop_result)  # exit if symbols are not correctly set
-    if len(messages)>0:
+    if len(messages) > 0:
         logger.info(messages[0])
 
     return loop_result
@@ -337,7 +389,7 @@ def compile_sbatch_script(setup, env, srun_flags, command, name):
     return sbatch_lines
 
 
-def write_exec_scripts(executor, loop_result, destinations):
+def write_exec_scripts(executor, loop_result, destinations, sbatch=False):
     for name, vaspinput in loop_result.items():
         calcdir = destinations[name]
         lines = None
@@ -368,20 +420,30 @@ def write_exec_scripts(executor, loop_result, destinations):
             os.chmod(
                 file, os.stat(file).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
             )
+        if sbatch:
+            script_dir = calcdir.parent
+            result = subprocess.run(["sbatch", os.path.basename(file)], cwd=script_dir, capture_output=True, text=True)
+            if result.returncode == 0:
+                logger.info(f"Job submitted successfully: {result.stdout.strip()}")
+            else:
+                logger.error(f"Error submitting job: {result.stderr.strip()}")
+
+
 
 def write_dpdisp_tasks(executor, loop_result, destinations):
-    tasks=[]
+    tasks = []
     for name, vaspinput in loop_result.items():
         calcdir = destinations[name]
-        tt={
-              "command": "mpirun -np ${DPDISPATCHER_CPU_PER_NODE} vasp_std",
-              "task_work_path": str(calcdir),
-            }
+        tt = {
+            "command": "mpirun -np ${DPDISPATCHER_CPU_PER_NODE} vasp_std",
+            "task_work_path": str(calcdir),
+        }
         tasks.append(tt)
     file = calcdir.parent / Path(f"tasks.yaml")
     with open(file, "w") as f:
         yaml.dump(tasks, f, default_flow_style=False, indent=4)
-        #json.dump(tasks, f, indent=4)
+        # json.dump(tasks, f, indent=4)
+
 
 def set_parallelism_dict(cfg):
     para_dict = None
@@ -401,7 +463,7 @@ def main(cfg):
 
     # scan for available files
     logger.debug(
-        f'scanning for input {" ".join([ ii for ii in cfg.source.values() if ii is not None])}'
+        f'scanning for input {" ".join([ ii for ii in cfg.dir if ii is not None])}'
     )
     available_files = scan_vasp_files(
         ["INCAR", "POSCAR", "KPOINTS", "POTCAR"], cfg.source
@@ -448,8 +510,9 @@ def main(cfg):
     # write slurm scripts
     if cfg.executor is not None:
         exe = cfg.executors[cfg.executor]
-        write_exec_scripts(exe, loop_result, destinations)
-        if 'csea' in cfg.executor:
+        sbatch=cfg.get('sbatch',False)
+        write_exec_scripts(exe, loop_result, destinations, sbatch)
+        if "csea" in cfg.executor:
             write_dpdisp_tasks(exe, loop_result, destinations)
     else:
         logger.warning("no executor specified - unable to write run scripts")
@@ -463,6 +526,10 @@ def main(cfg):
 # implementare help message
 # clean exif from 'do you want to continue'
 # test config: subdir, prefix, source.*, executor
+# TODO: fix loop over lattice constant when poscar is from config file
+# add print config.yaml to target directory
+# add feature recreate from old config file
+# make incar keys always uppercase
 
 
 # DONE implementare precisione variabile per i parametri di loop
