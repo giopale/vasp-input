@@ -215,7 +215,7 @@ def compile_input_loop(
         name_tmp = name
         for ll in cfg.loop:
             if "list" in ll.interpolation:
-                eoscar = Poscar.from_str("".join(poscar_lines))
+                #poscar = Poscar.from_str("".join(poscar_lines))
                 parameters_of_loops.append({"file": ll.file, "parameter": ll.parameter})
                 values = ll.val
                 list_of_loops.append(values)
@@ -241,9 +241,14 @@ def compile_input_loop(
             for idx, ii in enumerate(parameters_of_loops):
                 dash = "" if idx == 0 else "-"
                 if ii["file"].lower() == "incar":
-                    name_tmp = (
-                        name_tmp + f'{dash}{ii["parameter"].upper()}_{cc[idx]:.2f}'
-                    )
+                    if isinstance(cc[idx],str):
+                        name_tmp = (
+                            name_tmp + f'{dash}{ii["parameter"].upper()}_{cc[idx]}'
+                        )
+                    else:
+                        name_tmp = (
+                            name_tmp + f'{dash}{ii["parameter"].upper()}_{cc[idx]:.2f}'
+                        )
                     incar.update({ii["parameter"].upper(): cc[idx]})
                 if ii["file"].lower() == "poscar":
                     # special handling here for the lattice constant
@@ -290,6 +295,7 @@ def compile_input_loop(
                 kpoints=copy.deepcopy(kpoints),
                 potcar=copy.deepcopy(potcar),
             )
+            name_tmp=name_tmp.replace(" ", "_")
             loop_result.update({name_tmp: newinput})
 
     else:
