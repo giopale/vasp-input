@@ -386,7 +386,10 @@ def compile_sbatch_script(setup, env, srun_flags, command, name):
             for ii in val:
                 result.append(f"--{key}={ii}")
         else:
-            result.append(f"--{key}={val}")
+            if val is not None:
+                result.append(f"--{key}={val}")
+            else:
+                result.append(f"--{key}")
 
     command = " ".join(result + [str(command)])
     sbatch_lines.append(f"pushd {name} || exit 1\n    " + command + "\npopd\n")
